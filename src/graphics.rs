@@ -163,17 +163,7 @@ impl framework::Example for Cubes {
             &pipeline_layout,
         );
 
-        let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
-            size: wgpu::Extent3d {
-                width: sc_desc.width,
-                height: sc_desc.height,
-                depth: 1,
-            },
-            array_size: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::D32Float,
-            usage: wgpu::TextureUsageFlags::OUTPUT_ATTACHMENT,
-        });
+        let depth_texture = Cubes::create_depth_texture(&sc_desc, device);
 
         // Done
         let init_command_buf = init_encoder.finish();
@@ -201,6 +191,9 @@ impl framework::Example for Cubes {
     }
 
     fn resize(&mut self, sc_desc: &wgpu::SwapChainDescriptor, device: &mut wgpu::Device) {
+        let depth_texture = Self::create_depth_texture(sc_desc, device);
+        self.renderer.depth_view = depth_texture.create_default_view();
+
         let aspect_ratio = sc_desc.width as f32 / sc_desc.height as f32;
         self.renderer.aspect_ratio = aspect_ratio;
         let mx_total = Self::view_proj_matrix(aspect_ratio);
@@ -298,6 +291,7 @@ impl framework::Example for Cubes {
         device.get_queue().submit(&[encoder.finish()]);
     }
 }
+
 
 impl Cubes {
     fn create_render_pipeline(
@@ -455,5 +449,20 @@ impl Cubes {
                 _color: color,
             });
         }
+    }
+
+    fn create_depth_texture(sc_desc: &wgpu::SwapChainDescriptor, device: &mut wgpu::Device) -> wgpu::Texture {
+        let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
+            size: wgpu::Extent3d {
+                width: sc_desc.width,
+                height: sc_desc.height,
+                depth: 1,
+            },
+            array_size: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::D32Float,
+            usage: wgpu::TextureUsageFlags::OUTPUT_ATTACHMENT,
+        });
+        depth_texture
     }
 }
