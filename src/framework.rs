@@ -54,7 +54,7 @@ pub fn run<E: Example>(title: &str) {
     env_logger::init();
     let instance = wgpu::Instance::new();
     let adapter = instance.get_adapter(&wgpu::AdapterDescriptor {
-        power_preference: wgpu::PowerPreference::HighPerformance,
+        power_preference: wgpu::PowerPreference::LowPower,
     });
     let mut device = adapter.create_device(&wgpu::DeviceDescriptor {
         extensions: wgpu::Extensions {
