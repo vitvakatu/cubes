@@ -10,7 +10,7 @@ layout(location = 0) out vec4 v_Color;
 layout(location = 1) out vec3 v_Normal;
 layout(location = 2) out vec3 v_HalfDir;
 
-const vec4 u_CameraPos = vec4(1.5, -5.0, 3.0, 1.0);
+const vec4 u_CameraPos = vec4(-1.8, -8.0, 3.0, 1.0);
 const vec4 u_LightPos = vec4(0.0, -10.0, 10.0, 1.0);
 const vec4 u_LightColor = vec4(1.0, 1.0, 1.0, 1.0);
 

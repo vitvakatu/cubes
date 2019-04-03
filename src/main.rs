@@ -184,26 +184,17 @@ fn create_vertices() -> (Vec<Vertex>, Vec<u16>) {
 
 #[derive(Clone, Copy)]
 #[repr(C)]
-struct Instance {
+pub struct Instance {
     _offset_scale: [f32; 4],
     _rotation: [f32; 4],
     _color: [f32; 4],
-}
-
-impl Instance {
-    pub fn new(offset_scale: [f32; 4], rotation: cgmath::Quaternion<f32>, color: [f32; 4]) -> Self {
-        Self {
-            _offset_scale: offset_scale,
-            _rotation: rotation.into(),
-            _color: color,
-        }
-    }
 }
 
 struct Example {
     vertex_buf: wgpu::Buffer,
     index_buf: wgpu::Buffer,
     instance_buf: wgpu::Buffer,
+    depth_view: wgpu::TextureView,
     instances: Vec<Instance>,
     index_count: usize,
     bind_group: wgpu::BindGroup,
@@ -343,7 +334,15 @@ impl framework::Example for Example {
                 alpha: wgpu::BlendDescriptor::REPLACE,
                 write_mask: wgpu::ColorWriteFlags::ALL,
             }],
-            depth_stencil_state: None,
+            depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
+                format: wgpu::TextureFormat::D32Float,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::LessEqual,
+                stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
+                stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
+                stencil_read_mask: 0,
+                stencil_write_mask: 0
+            }),
             index_format: wgpu::IndexFormat::Uint16,
             vertex_buffers: &[
                 wgpu::VertexBufferDescriptor {
@@ -387,6 +386,19 @@ impl framework::Example for Example {
             sample_count: 1,
         });
 
+        let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
+            size: wgpu::Extent3d {
+                width: sc_desc.width,
+                height: sc_desc.height,
+                depth: 1,
+            },
+            array_size: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::D32Float,
+            usage: wgpu::TextureUsageFlags::OUTPUT_ATTACHMENT,
+        });
+
+
         // Done
         let init_command_buf = init_encoder.finish();
         device.get_queue().submit(&[init_command_buf]);
@@ -396,6 +408,7 @@ impl framework::Example for Example {
             index_buf,
             instance_buf,
             instances,
+            depth_view: depth_texture.create_default_view(),
             index_count: index_data.len(),
             bind_group,
             uniform_buf,
@@ -491,7 +504,15 @@ impl framework::Example for Example {
                         a: 1.0,
                     },
                 }],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachmentDescriptor {
+                    attachment: &self.depth_view,
+                    depth_load_op: wgpu::LoadOp::Clear,
+                    depth_store_op: wgpu::StoreOp::Store,
+                    clear_depth: 1.0,
+                    stencil_load_op: wgpu::LoadOp::Clear,
+                    stencil_store_op: wgpu::StoreOp::Store,
+                    clear_stencil: 0
+                }),
             });
             rpass.set_pipeline(&self.pipeline);
             rpass.set_bind_group(0, &self.bind_group);
