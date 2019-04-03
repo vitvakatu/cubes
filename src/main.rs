@@ -21,7 +21,7 @@ struct Cube {
     level: froggy::Pointer<Level>,
 }
 
-const LEVELS: [Level; 3] = [
+const LEVELS: [Level; 4] = [
     Level {
         speed: 0.7,
         color: [1.0, 1.0, 0.5, 1.0],
@@ -34,10 +34,10 @@ const LEVELS: [Level; 3] = [
         speed: 1.3,
         color: [0.5, 1.0, 0.5, 1.0],
     },
-//    Level {
-//        speed: -1.6,
-//        color: [1.0, 0.5, 0.5, 1.0],
-//    },
+    Level {
+        speed: -1.6,
+        color: [1.0, 0.5, 0.5, 1.0],
+    },
 //    Level {
 //        speed: 1.9,
 //        color: [0.5, 1.0, 1.0, 1.0],
@@ -139,35 +139,35 @@ fn vertex(pos: [i8; 3], normal: [i8; 3]) -> Vertex {
 fn create_vertices() -> (Vec<Vertex>, Vec<u16>) {
     let vertex_data = [
         // top (0, 0, 1)
-        vertex([-1, -1, 1], [0, 0, 1]),
-        vertex([1, -1, 1], [0, 0, 1]),
-        vertex([1, 1, 1], [0, 0, 1]),
-        vertex([-1, 1, 1], [0, 0, 1]),
+        vertex([-1, -1, 2], [0, 0, 1]),
+        vertex([1, -1, 2], [0, 0, 1]),
+        vertex([1, 1, 2], [0, 0, 1]),
+        vertex([-1, 1, 2], [0, 0, 1]),
         // bottom (0, 0, -1)
-        vertex([-1, 1, -1], [0, 0, -1]),
-        vertex([1, 1, -1], [0, 0, -1]),
-        vertex([1, -1, -1], [0, 0, -1]),
-        vertex([-1, -1, -1], [0, 0, -1]),
+        vertex([-1, 1, 0], [0, 0, -1]),
+        vertex([1, 1, 0], [0, 0, -1]),
+        vertex([1, -1, 0], [0, 0, -1]),
+        vertex([-1, -1, 0], [0, 0, -1]),
         // right (1, 0, 0)
-        vertex([1, -1, -1], [1, 0, 0]),
-        vertex([1, 1, -1], [1, 0, 0]),
-        vertex([1, 1, 1], [1, 0, 0]),
-        vertex([1, -1, 1], [1, 0, 0]),
+        vertex([1, -1, 0], [1, 0, 0]),
+        vertex([1, 1, 0], [1, 0, 0]),
+        vertex([1, 1, 2], [1, 0, 0]),
+        vertex([1, -1, 2], [1, 0, 0]),
         // left (-1, 0, 0)
-        vertex([-1, -1, 1], [-1, 0, 0]),
-        vertex([-1, 1, 1], [-1, 0, 0]),
-        vertex([-1, 1, -1], [-1, 0, 0]),
-        vertex([-1, -1, -1], [-1, 0, 0]),
+        vertex([-1, -1, 2], [-1, 0, 0]),
+        vertex([-1, 1, 2], [-1, 0, 0]),
+        vertex([-1, 1, 0], [-1, 0, 0]),
+        vertex([-1, -1, 0], [-1, 0, 0]),
         // front (0, 1, 0)
-        vertex([1, 1, -1], [0, 1, 0]),
-        vertex([-1, 1, -1], [0, 1, 0]),
-        vertex([-1, 1, 1], [0, 1, 0]),
-        vertex([1, 1, 1], [0, 1, 0]),
+        vertex([1, 1, 0], [0, 1, 0]),
+        vertex([-1, 1, 0], [0, 1, 0]),
+        vertex([-1, 1, 2], [0, 1, 0]),
+        vertex([1, 1, 2], [0, 1, 0]),
         // back (0, -1, 0)
-        vertex([1, -1, 1], [0, -1, 0]),
-        vertex([-1, -1, 1], [0, -1, 0]),
-        vertex([-1, -1, -1], [0, -1, 0]),
-        vertex([1, -1, -1], [0, -1, 0]),
+        vertex([1, -1, 2], [0, -1, 0]),
+        vertex([-1, -1, 2], [0, -1, 0]),
+        vertex([-1, -1, 0], [0, -1, 0]),
+        vertex([1, -1, 0], [0, -1, 0]),
     ];
 
     let index_data: &[u16] = &[
@@ -208,10 +208,10 @@ struct Example {
 
 impl Example {
     fn view_proj_matrix(aspect_ratio: f32) -> cgmath::Matrix4<f32> {
-        let mx_projection = cgmath::perspective(cgmath::Deg(45f32), aspect_ratio, 1.0, 10.0);
+        let mx_projection = cgmath::perspective(cgmath::Deg(60f32), aspect_ratio, 1.0, 100.0);
         let mx_view = cgmath::Matrix4::look_at(
-            cgmath::Point3::new(-1.8f32, -8.0, 3.0),
-            cgmath::Point3::new(0f32, 0.0, 0.0),
+            cgmath::Point3::new(-1.8f32, -8.0, 4.0),
+            cgmath::Point3::new(0f32, 0.0, 2.0),
             -cgmath::Vector3::unit_z(),
         );
         mx_projection * mx_view
