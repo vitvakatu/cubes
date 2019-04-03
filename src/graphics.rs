@@ -479,9 +479,7 @@ impl Cubes {
             .create_buffer_mapped(index_data.len(), wgpu::BufferUsageFlags::INDEX)
             .fill_from_slice(&index_data)
     }
-}
 
-impl Cubes {
     fn create_instance_buffer(device: &mut wgpu::Device, instances: &[Instance]) -> wgpu::Buffer {
         device
             .create_buffer_mapped(
