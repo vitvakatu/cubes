@@ -127,24 +127,15 @@ impl framework::Example for Cubes {
         // Create the vertex and index buffers
         let vertex_size = mem::size_of::<Vertex>();
         let (vertex_data, index_data) = create_vertices();
-        let vertex_buf = device
-            .create_buffer_mapped(vertex_data.len(), wgpu::BufferUsageFlags::VERTEX)
-            .fill_from_slice(&vertex_data);
+        let vertex_buf = Cubes::create_vertex_buffer(device, &vertex_data);
 
-        let index_buf = device
-            .create_buffer_mapped(index_data.len(), wgpu::BufferUsageFlags::INDEX)
-            .fill_from_slice(&index_data);
+        let index_buf = Cubes::create_index_buffer(device, &index_data);
 
         // Create instance buffer
         let instance_size = mem::size_of::<Instance>();
         let mut instances = Vec::new();
         Cubes::update_instances(&mut nodes, &mut cubes, &levels, &mut instances);
-        let instance_buf = device
-            .create_buffer_mapped(
-                instances.len(),
-                wgpu::BufferUsageFlags::VERTEX | wgpu::BufferUsageFlags::TRANSFER_DST,
-            )
-            .fill_from_slice(&instances);
+        let instance_buf = Cubes::create_instance_buffer(device, &instances);
 
         // Create pipeline layout
         let (bind_group_layout, pipeline_layout) = Cubes::create_pipeline_layout(device);
@@ -237,7 +228,12 @@ impl framework::Example for Cubes {
         }
 
         // Update instances
-        Self::update_instances(&self.nodes, &self.cubes, &self.levels, &mut self.renderer.instances);
+        Self::update_instances(
+            &self.nodes,
+            &self.cubes,
+            &self.levels,
+            &mut self.renderer.instances,
+        );
     }
 
     fn render(&mut self, frame: &wgpu::SwapChainOutput, device: &mut wgpu::Device) {
@@ -245,7 +241,10 @@ impl framework::Example for Cubes {
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
         // load instances data
         let temp_buf = device
-            .create_buffer_mapped(self.renderer.instances.len(), wgpu::BufferUsageFlags::TRANSFER_SRC)
+            .create_buffer_mapped(
+                self.renderer.instances.len(),
+                wgpu::BufferUsageFlags::TRANSFER_SRC,
+            )
             .fill_from_slice(&self.renderer.instances);
         encoder.copy_buffer_to_buffer(
             &temp_buf,
@@ -280,7 +279,10 @@ impl framework::Example for Cubes {
             rpass.set_pipeline(&self.renderer.pipeline);
             rpass.set_bind_group(0, &self.renderer.bind_group);
             rpass.set_index_buffer(&self.renderer.index_buf, 0);
-            rpass.set_vertex_buffers(&[(&self.renderer.vertex_buf, 0), (&self.renderer.instance_buf, 0)]);
+            rpass.set_vertex_buffers(&[
+                (&self.renderer.vertex_buf, 0),
+                (&self.renderer.instance_buf, 0),
+            ]);
             rpass.draw_indexed(
                 0..self.renderer.index_count as u32,
                 0,
@@ -291,7 +293,6 @@ impl framework::Example for Cubes {
         device.get_queue().submit(&[encoder.finish()]);
     }
 }
-
 
 impl Cubes {
     fn create_render_pipeline(
@@ -420,7 +421,7 @@ impl Cubes {
         bind_group_layout: &wgpu::BindGroupLayout,
         uniform_buf: &wgpu::Buffer,
     ) -> wgpu::BindGroup {
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
@@ -429,8 +430,7 @@ impl Cubes {
                     range: 0..64,
                 },
             }],
-        });
-        bind_group
+        })
     }
 
     fn update_instances(
@@ -451,8 +451,11 @@ impl Cubes {
         }
     }
 
-    fn create_depth_texture(sc_desc: &wgpu::SwapChainDescriptor, device: &mut wgpu::Device) -> wgpu::Texture {
-        let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
+    fn create_depth_texture(
+        sc_desc: &wgpu::SwapChainDescriptor,
+        device: &mut wgpu::Device,
+    ) -> wgpu::Texture {
+        device.create_texture(&wgpu::TextureDescriptor {
             size: wgpu::Extent3d {
                 width: sc_desc.width,
                 height: sc_desc.height,
@@ -462,7 +465,29 @@ impl Cubes {
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::D32Float,
             usage: wgpu::TextureUsageFlags::OUTPUT_ATTACHMENT,
-        });
-        depth_texture
+        })
+    }
+
+    fn create_vertex_buffer(device: &mut wgpu::Device, vertex_data: &[Vertex]) -> wgpu::Buffer {
+        device
+            .create_buffer_mapped(vertex_data.len(), wgpu::BufferUsageFlags::VERTEX)
+            .fill_from_slice(&vertex_data)
+    }
+
+    fn create_index_buffer(device: &mut wgpu::Device, index_data: &[u16]) -> wgpu::Buffer {
+        device
+            .create_buffer_mapped(index_data.len(), wgpu::BufferUsageFlags::INDEX)
+            .fill_from_slice(&index_data)
+    }
+}
+
+impl Cubes {
+    fn create_instance_buffer(device: &mut wgpu::Device, instances: &[Instance]) -> wgpu::Buffer {
+        device
+            .create_buffer_mapped(
+                instances.len(),
+                wgpu::BufferUsageFlags::VERTEX | wgpu::BufferUsageFlags::TRANSFER_DST,
+            )
+            .fill_from_slice(&instances)
     }
 }
