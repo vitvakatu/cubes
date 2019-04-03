@@ -17,48 +17,46 @@ struct Cube {
 #[derive(Clone, Copy)]
 struct Vertex {
     _pos: [f32; 4],
-    _tex_coord: [f32; 2],
 }
 
-fn vertex(pos: [i8; 3], tc: [i8; 2]) -> Vertex {
+fn vertex(pos: [i8; 3]) -> Vertex {
     Vertex {
         _pos: [pos[0] as f32, pos[1] as f32, pos[2] as f32, 1.0],
-        _tex_coord: [tc[0] as f32, tc[1] as f32],
     }
 }
 
 fn create_vertices() -> (Vec<Vertex>, Vec<u16>) {
     let vertex_data = [
         // top (0, 0, 1)
-        vertex([-1, -1, 1], [0, 0]),
-        vertex([1, -1, 1], [1, 0]),
-        vertex([1, 1, 1], [1, 1]),
-        vertex([-1, 1, 1], [0, 1]),
+        vertex([-1, -1, 1]),
+        vertex([1, -1, 1]),
+        vertex([1, 1, 1]),
+        vertex([-1, 1, 1]),
         // bottom (0, 0, -1)
-        vertex([-1, 1, -1], [1, 0]),
-        vertex([1, 1, -1], [0, 0]),
-        vertex([1, -1, -1], [0, 1]),
-        vertex([-1, -1, -1], [1, 1]),
+        vertex([-1, 1, -1]),
+        vertex([1, 1, -1]),
+        vertex([1, -1, -1]),
+        vertex([-1, -1, -1]),
         // right (1, 0, 0)
-        vertex([1, -1, -1], [0, 0]),
-        vertex([1, 1, -1], [1, 0]),
-        vertex([1, 1, 1], [1, 1]),
-        vertex([1, -1, 1], [0, 1]),
+        vertex([1, -1, -1]),
+        vertex([1, 1, -1]),
+        vertex([1, 1, 1]),
+        vertex([1, -1, 1]),
         // left (-1, 0, 0)
-        vertex([-1, -1, 1], [1, 0]),
-        vertex([-1, 1, 1], [0, 0]),
-        vertex([-1, 1, -1], [0, 1]),
-        vertex([-1, -1, -1], [1, 1]),
+        vertex([-1, -1, 1]),
+        vertex([-1, 1, 1]),
+        vertex([-1, 1, -1]),
+        vertex([-1, -1, -1]),
         // front (0, 1, 0)
-        vertex([1, 1, -1], [1, 0]),
-        vertex([-1, 1, -1], [0, 0]),
-        vertex([-1, 1, 1], [0, 1]),
-        vertex([1, 1, 1], [1, 1]),
+        vertex([1, 1, -1]),
+        vertex([-1, 1, -1]),
+        vertex([-1, 1, 1]),
+        vertex([1, 1, 1]),
         // back (0, -1, 0)
-        vertex([1, -1, 1], [0, 0]),
-        vertex([-1, -1, 1], [1, 0]),
-        vertex([-1, -1, -1], [1, 1]),
-        vertex([1, -1, -1], [0, 1]),
+        vertex([1, -1, 1]),
+        vertex([-1, -1, 1]),
+        vertex([-1, -1, -1]),
+        vertex([1, -1, -1]),
     ];
 
     let index_data: &[u16] = &[
@@ -71,29 +69,6 @@ fn create_vertices() -> (Vec<Vertex>, Vec<u16>) {
     ];
 
     (vertex_data.to_vec(), index_data.to_vec())
-}
-
-fn create_texels(size: usize) -> Vec<u8> {
-    use std::iter;
-
-    (0..size * size)
-        .flat_map(|id| {
-            // get high five for recognizing this ;)
-            let cx = 3.0 * (id % size) as f32 / (size - 1) as f32 - 2.0;
-            let cy = 2.0 * (id / size) as f32 / (size - 1) as f32 - 1.0;
-            let (mut x, mut y, mut count) = (cx, cy, 0);
-            while count < 0xFF && x * x + y * y < 4.0 {
-                let old_x = x;
-                x = x * x - y * y + cx;
-                y = 2.0 * old_x * y + cy;
-                count += 1;
-            }
-            iter::once(0xFF - (count * 5) as u8)
-                .chain(iter::once(0xFF - (count * 15) as u8))
-                .chain(iter::once(0xFF - (count * 50) as u8))
-                .chain(iter::once(1))
-        })
-        .collect()
 }
 
 struct Example {
@@ -128,7 +103,7 @@ impl framework::Example for Example {
     fn init(sc_desc: &wgpu::SwapChainDescriptor, device: &mut wgpu::Device) -> Self {
         use std::mem;
 
-        let mut init_encoder =
+        let init_encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
 
         // Create the vertex and index buffers
@@ -150,75 +125,12 @@ impl framework::Example for Example {
                     visibility: wgpu::ShaderStageFlags::VERTEX,
                     ty: wgpu::BindingType::UniformBuffer,
                 },
-                wgpu::BindGroupLayoutBinding {
-                    binding: 1,
-                    visibility: wgpu::ShaderStageFlags::FRAGMENT,
-                    ty: wgpu::BindingType::SampledTexture,
-                },
-                wgpu::BindGroupLayoutBinding {
-                    binding: 2,
-                    visibility: wgpu::ShaderStageFlags::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler,
-                },
             ],
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             bind_group_layouts: &[&bind_group_layout],
         });
 
-        // Create the texture
-        let size = 256u32;
-        let texels = create_texels(size as usize);
-        let texture_extent = wgpu::Extent3d {
-            width: size,
-            height: size,
-            depth: 1,
-        };
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            size: texture_extent,
-            array_size: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsageFlags::SAMPLED | wgpu::TextureUsageFlags::TRANSFER_DST,
-        });
-        let texture_view = texture.create_default_view();
-        let temp_buf = device
-            .create_buffer_mapped(texels.len(), wgpu::BufferUsageFlags::TRANSFER_SRC)
-            .fill_from_slice(&texels);
-        init_encoder.copy_buffer_to_texture(
-            wgpu::BufferCopyView {
-                buffer: &temp_buf,
-                offset: 0,
-                row_pitch: 4 * size,
-                image_height: size,
-            },
-            wgpu::TextureCopyView {
-                texture: &texture,
-                level: 0,
-                slice: 0,
-                origin: wgpu::Origin3d {
-                    x: 0.0,
-                    y: 0.0,
-                    z: 0.0,
-                },
-            },
-            texture_extent,
-        );
-
-        // Create other resources
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            r_address_mode: wgpu::AddressMode::ClampToEdge,
-            s_address_mode: wgpu::AddressMode::ClampToEdge,
-            t_address_mode: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            lod_min_clamp: -100.0,
-            lod_max_clamp: 100.0,
-            max_anisotropy: 0,
-            compare_function: wgpu::CompareFunction::Always,
-            border_color: wgpu::BorderColor::TransparentBlack,
-        });
         let aspect_ratio = sc_desc.width as f32 / sc_desc.height as f32;
         let mx_total = Self::view_proj_matrix(sc_desc.width as f32 / sc_desc.height as f32);
         let mx_ref: &[f32; 16] = mx_total.as_ref();
@@ -239,14 +151,6 @@ impl framework::Example for Example {
                         buffer: &uniform_buf,
                         range: 0..64,
                     },
-                },
-                wgpu::Binding {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&texture_view),
-                },
-                wgpu::Binding {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
                 },
             ],
         });
@@ -386,6 +290,7 @@ impl framework::Example for Example {
             let mx_ref: &[f32; 16] = matrix.as_ref();
             let temp_buf = device.create_buffer_mapped(16, wgpu::BufferUsageFlags::TRANSFER_SRC).fill_from_slice(mx_ref);
             encoder.copy_buffer_to_buffer(&temp_buf, 0, &self.uniform_buf, 0, 64);
+
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
                     attachment: &frame.view,
