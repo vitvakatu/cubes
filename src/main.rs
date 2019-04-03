@@ -17,46 +17,48 @@ struct Cube {
 #[derive(Clone, Copy)]
 struct Vertex {
     _pos: [f32; 4],
+    _normal: [i32; 4],
 }
 
-fn vertex(pos: [i8; 3]) -> Vertex {
+fn vertex(pos: [i8; 3], normal: [i8; 3]) -> Vertex {
     Vertex {
         _pos: [pos[0] as f32, pos[1] as f32, pos[2] as f32, 1.0],
+        _normal: [normal[0] as i32, normal[1] as i32, normal[2] as i32, 1]
     }
 }
 
 fn create_vertices() -> (Vec<Vertex>, Vec<u16>) {
     let vertex_data = [
         // top (0, 0, 1)
-        vertex([-1, -1, 1]),
-        vertex([1, -1, 1]),
-        vertex([1, 1, 1]),
-        vertex([-1, 1, 1]),
+        vertex([-1, -1, 1], [0, 0, 1]),
+        vertex([1, -1, 1], [0, 0, 1]),
+        vertex([1, 1, 1], [0, 0, 1]),
+        vertex([-1, 1, 1], [0, 0, 1]),
         // bottom (0, 0, -1)
-        vertex([-1, 1, -1]),
-        vertex([1, 1, -1]),
-        vertex([1, -1, -1]),
-        vertex([-1, -1, -1]),
+        vertex([-1, 1, -1], [0, 0, -1]),
+        vertex([1, 1, -1], [0, 0, -1]),
+        vertex([1, -1, -1], [0, 0, -1]),
+        vertex([-1, -1, -1], [0, 0, -1]),
         // right (1, 0, 0)
-        vertex([1, -1, -1]),
-        vertex([1, 1, -1]),
-        vertex([1, 1, 1]),
-        vertex([1, -1, 1]),
+        vertex([1, -1, -1], [1, 0, 0]),
+        vertex([1, 1, -1], [1, 0, 0]),
+        vertex([1, 1, 1], [1, 0, 0]),
+        vertex([1, -1, 1], [1, 0, 0]),
         // left (-1, 0, 0)
-        vertex([-1, -1, 1]),
-        vertex([-1, 1, 1]),
-        vertex([-1, 1, -1]),
-        vertex([-1, -1, -1]),
+        vertex([-1, -1, 1], [-1, 0, 0]),
+        vertex([-1, 1, 1], [-1, 0, 0]),
+        vertex([-1, 1, -1], [-1, 0, 0]),
+        vertex([-1, -1, -1], [-1, 0, 0]),
         // front (0, 1, 0)
-        vertex([1, 1, -1]),
-        vertex([-1, 1, -1]),
-        vertex([-1, 1, 1]),
-        vertex([1, 1, 1]),
+        vertex([1, 1, -1], [0, 1, 0]),
+        vertex([-1, 1, -1], [0, 1, 0]),
+        vertex([-1, 1, 1], [0, 1, 0]),
+        vertex([1, 1, 1], [0, 1, 0]),
         // back (0, -1, 0)
-        vertex([1, -1, 1]),
-        vertex([-1, -1, 1]),
-        vertex([-1, -1, -1]),
-        vertex([1, -1, -1]),
+        vertex([1, -1, 1], [0, -1, 0]),
+        vertex([-1, -1, 1], [0, -1, 0]),
+        vertex([-1, -1, -1], [0, -1, 0]),
+        vertex([1, -1, -1], [0, -1, 0]),
     ];
 
     let index_data: &[u16] = &[
@@ -198,7 +200,7 @@ impl framework::Example for Example {
                     },
                     wgpu::VertexAttributeDescriptor {
                         attribute_index: 1,
-                        format: wgpu::VertexFormat::Float2,
+                        format: wgpu::VertexFormat::Int4,
                         offset: 4 * 4,
                     },
                 ],
