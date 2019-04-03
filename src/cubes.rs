@@ -97,8 +97,6 @@ pub fn create_cubes(
         .collect();
 
     while let Some(mut next) = stack.pop() {
-        //HACK: materials are indexed the same way as levels
-        // it's fine for demostration purposes
         let level = match next.levels_iter.next() {
             Some(item) => levels.pin(&item),
             None => continue,
