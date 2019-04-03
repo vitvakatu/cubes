@@ -1,4 +1,18 @@
+use cgmath::{Transform, Rotation3, Zero, One};
+
 mod framework;
+
+type Space = cgmath::Decomposed<cgmath::Vector3<f32>, cgmath::Quaternion<f32>>;
+
+struct Node {
+    local: Space,
+    world: Space,
+    parent: Option<froggy::Pointer<Node>>
+}
+
+struct Cube {
+    node: froggy::Pointer<Node>,
+}
 
 #[derive(Clone, Copy)]
 struct Vertex {
@@ -89,10 +103,13 @@ struct Example {
     bind_group: wgpu::BindGroup,
     uniform_buf: wgpu::Buffer,
     pipeline: wgpu::RenderPipeline,
+    nodes: froggy::Storage<Node>,
+    cubes: Vec<Cube>,
+    aspect_ratio: f32,
 }
 
 impl Example {
-    fn generate_matrix(aspect_ratio: f32) -> cgmath::Matrix4<f32> {
+    fn view_proj_matrix(aspect_ratio: f32) -> cgmath::Matrix4<f32> {
         let mx_projection = cgmath::perspective(cgmath::Deg(45f32), aspect_ratio, 1.0, 10.0);
         let mx_view = cgmath::Matrix4::look_at(
             cgmath::Point3::new(1.5f32, -5.0, 3.0),
@@ -100,6 +117,10 @@ impl Example {
             -cgmath::Vector3::unit_z(),
         );
         mx_projection * mx_view
+    }
+
+    fn transform_matrix(global: Space, view_proj: cgmath::Matrix4<f32>) -> cgmath::Matrix4<f32> {
+        view_proj * cgmath::Matrix4::from(global)
     }
 }
 
@@ -198,7 +219,8 @@ impl framework::Example for Example {
             compare_function: wgpu::CompareFunction::Always,
             border_color: wgpu::BorderColor::TransparentBlack,
         });
-        let mx_total = Self::generate_matrix(sc_desc.width as f32 / sc_desc.height as f32);
+        let aspect_ratio = sc_desc.width as f32 / sc_desc.height as f32;
+        let mx_total = Self::view_proj_matrix(sc_desc.width as f32 / sc_desc.height as f32);
         let mx_ref: &[f32; 16] = mx_total.as_ref();
         let uniform_buf = device
             .create_buffer_mapped(
@@ -283,6 +305,22 @@ impl framework::Example for Example {
         // Done
         let init_command_buf = init_encoder.finish();
         device.get_queue().submit(&[init_command_buf]);
+
+        // Cubes
+        let mut nodes = froggy::Storage::new();
+        let node = nodes.create(Node {
+            local: Space {
+                scale: 1.0,
+                rot: cgmath::Quaternion::one(),
+                disp: cgmath::Vector3::zero(),
+            },
+            world: Space::one(),
+            parent: None,
+        });
+        let cubes = vec![Cube {
+            node,
+        }];
+
         Example {
             vertex_buf,
             index_buf,
@@ -290,11 +328,16 @@ impl framework::Example for Example {
             bind_group,
             uniform_buf,
             pipeline,
+            nodes,
+            cubes,
+            aspect_ratio
         }
     }
 
     fn resize(&mut self, sc_desc: &wgpu::SwapChainDescriptor, device: &mut wgpu::Device) {
-        let mx_total = Self::generate_matrix(sc_desc.width as f32 / sc_desc.height as f32);
+        let aspect_ratio = sc_desc.width as f32 / sc_desc.height as f32;
+        self.aspect_ratio = aspect_ratio;
+        let mx_total = Self::view_proj_matrix(aspect_ratio);
         let mx_ref: &[f32; 16] = mx_total.as_ref();
 
         let temp_buf = device
@@ -311,10 +354,38 @@ impl framework::Example for Example {
         //empty
     }
 
+    fn tick(&mut self, delta: f32) {
+        // animate local spaces
+        for cube in self.cubes.iter_mut() {
+            let angle = cgmath::Rad(delta * 1.0);
+            self.nodes[&cube.node].local.concat_self(&Space {
+                disp: cgmath::Vector3::zero(),
+                rot: cgmath::Quaternion::from_angle_z(angle),
+                scale: 1.0,
+            });
+        }
+
+        // re-compute world spaces, using streaming iteration
+        {
+            let mut cursor = self.nodes.cursor();
+            while let Some((left, mut item, _)) = cursor.next() {
+                item.world = match item.parent {
+                    Some(ref parent) => left.get(parent).unwrap().world.concat(&item.local),
+                    None => item.local,
+                };
+            }
+        }
+    }
+
     fn render(&mut self, frame: &wgpu::SwapChainOutput, device: &mut wgpu::Device) {
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
-        {
+        for cube in &self.cubes {
+            let global = self.nodes[&cube.node].world;
+            let matrix = Self::transform_matrix(global, Self::view_proj_matrix(self.aspect_ratio));
+            let mx_ref: &[f32; 16] = matrix.as_ref();
+            let temp_buf = device.create_buffer_mapped(16, wgpu::BufferUsageFlags::TRANSFER_SRC).fill_from_slice(mx_ref);
+            encoder.copy_buffer_to_buffer(&temp_buf, 0, &self.uniform_buf, 0, 64);
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
                     attachment: &frame.view,

@@ -41,6 +41,7 @@ pub trait Example {
     fn init(sc_desc: &wgpu::SwapChainDescriptor, device: &mut wgpu::Device) -> Self;
     fn resize(&mut self, sc_desc: &wgpu::SwapChainDescriptor, device: &mut wgpu::Device);
     fn update(&mut self, event: wgpu::winit::WindowEvent);
+    fn tick(&mut self, delta: f32);
     fn render(&mut self, frame: &wgpu::SwapChainOutput, device: &mut wgpu::Device);
 }
 
@@ -84,7 +85,11 @@ pub fn run<E: Example>(title: &str) {
 
     info!("Entering render loop...");
     let mut running = true;
+    let mut moment = std::time::Instant::now();
     while running {
+        let duration = moment.elapsed();
+        let delta = duration.as_secs() as f32 + (duration.subsec_nanos() as f32 * 1.0e-9);
+        moment = std::time::Instant::now();
         events_loop.poll_events(|event| match event {
             Event::WindowEvent {
                 event: WindowEvent::Resized(size),
@@ -116,6 +121,7 @@ pub fn run<E: Example>(title: &str) {
             },
             _ => (),
         });
+        example.tick(delta);
 
         let frame = swap_chain.get_next_texture();
         example.render(&frame, &mut device);
