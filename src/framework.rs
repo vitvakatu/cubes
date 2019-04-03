@@ -54,7 +54,7 @@ pub fn run<E: Example>(title: &str) {
     env_logger::init();
     let instance = wgpu::Instance::new();
     let adapter = instance.get_adapter(&wgpu::AdapterDescriptor {
-        power_preference: wgpu::PowerPreference::LowPower,
+        power_preference: wgpu::PowerPreference::HighPerformance,
     });
     let mut device = adapter.create_device(&wgpu::DeviceDescriptor {
         extensions: wgpu::Extensions {
@@ -105,11 +105,11 @@ pub fn run<E: Example>(title: &str) {
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::KeyboardInput {
                     input:
-                    KeyboardInput {
-                        virtual_keycode: Some(VirtualKeyCode::Escape),
-                        state: ElementState::Pressed,
-                        ..
-                    },
+                        KeyboardInput {
+                            virtual_keycode: Some(VirtualKeyCode::Escape),
+                            state: ElementState::Pressed,
+                            ..
+                        },
                     ..
                 }
                 | WindowEvent::CloseRequested => {
