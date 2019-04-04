@@ -1,7 +1,7 @@
 mod cubes;
 mod framework;
-mod graphics;
+mod app;
 
 fn main() {
-    framework::run::<graphics::Cubes>("cube");
+    framework::run::<app::Cubes>("cube");
 }
