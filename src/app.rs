@@ -200,10 +200,6 @@ impl framework::App for Cubes {
         device.get_queue().submit(&[encoder.finish()]);
     }
 
-    fn update(&mut self, _event: wgpu::winit::WindowEvent) {
-        //empty
-    }
-
     fn tick(&mut self, delta: f32) {
         // animate local spaces
         for cube in self.cubes.iter_mut() {
