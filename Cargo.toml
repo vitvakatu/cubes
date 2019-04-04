@@ -13,7 +13,7 @@ vulkan = ["wgpu/vulkan"]
 
 
 [dependencies]
-froggy = { path = "../froggy" }
+froggy = { git = "https://github.com/kvark/froggy", rev = "c10e2dd1ce8bdd194" }
 structopt = "0.2"
 cgmath = "0.17"
 wgpu = "0.2.2"
