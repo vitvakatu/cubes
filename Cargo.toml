@@ -5,7 +5,7 @@ authors = ["Ilya Bogdanov <ilya.bogdanov@xdev.re>"]
 edition = "2018"
 
 [features]
-default = ["metal"]
+default = []
 metal = ["wgpu/metal"]
 dx11 = ["wgpu/dx11"]
 dx12 = ["wgpu/dx12"]
