@@ -1,6 +1,8 @@
 use log::info;
 use std::collections::VecDeque;
 
+use crate::Settings;
+
 #[allow(dead_code)]
 pub enum ShaderStage {
     Vertex,
@@ -31,13 +33,17 @@ pub fn load_glsl(name: &str, stage: ShaderStage) -> Vec<u8> {
 }
 
 pub trait App {
-    fn init(sc_desc: &wgpu::SwapChainDescriptor, device: &mut wgpu::Device) -> Self;
+    fn init(
+        sc_desc: &wgpu::SwapChainDescriptor,
+        device: &mut wgpu::Device,
+        settings: Settings,
+    ) -> Self;
     fn resize(&mut self, sc_desc: &wgpu::SwapChainDescriptor, device: &mut wgpu::Device);
     fn tick(&mut self, delta: f32);
     fn render(&mut self, frame: &wgpu::SwapChainOutput, device: &mut wgpu::Device);
 }
 
-pub fn run<E: App>(title: &str) {
+pub fn run<E: App>(title: &str, settings: Settings) {
     use wgpu::winit::{
         ElementState, Event, EventsLoop, KeyboardInput, VirtualKeyCode, Window, WindowEvent,
     };
@@ -73,7 +79,7 @@ pub fn run<E: App>(title: &str) {
     let mut swap_chain = device.create_swap_chain(&surface, &sc_desc);
 
     info!("Initializing the example...");
-    let mut example = E::init(&sc_desc, &mut device);
+    let mut example = E::init(&sc_desc, &mut device, settings);
 
     info!("Entering render loop...");
     let mut running = true;

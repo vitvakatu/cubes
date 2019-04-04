@@ -19,7 +19,7 @@ pub struct Cube {
     pub level: froggy::Pointer<Level>,
 }
 
-pub const LEVELS: [Level; 6] = [
+pub const LEVELS: [Level; 10] = [
     Level {
         speed: 0.7,
         color: [1.0, 1.0, 0.5, 1.0],
@@ -44,11 +44,28 @@ pub const LEVELS: [Level; 6] = [
         speed: -2.2,
         color: [1.0, 0.5, 1.0, 1.0],
     },
+    Level {
+        speed: 10.0,
+        color: [0.1, 1.0, 0.5, 1.0],
+    },
+    Level {
+        speed: -0.3,
+        color: [1.0, 0.5, 1.0, 1.0],
+    },
+    Level {
+        speed: 3.5,
+        color: [0.2, 1.0, 0.6, 1.0],
+    },
+    Level {
+        speed: -3.5,
+        color: [0.1, 0.8, 0.7, 1.0],
+    },
 ];
 
 pub fn create_cubes(
     nodes: &mut froggy::Storage<Node>,
     levels: &froggy::Storage<Level>,
+    scale: f32,
 ) -> Vec<Cube> {
     let mut levels_iter = levels.iter_all();
     let root_level = levels_iter.next().unwrap();
@@ -91,7 +108,7 @@ pub fn create_cubes(
             .concat(&Space {
                 disp: cgmath::vec3(0.0, 0.0, 1.0),
                 rot: cgmath::Quaternion::one(),
-                scale: 0.4,
+                scale,
             })
         })
         .collect();

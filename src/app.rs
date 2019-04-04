@@ -1,5 +1,6 @@
 use crate::cubes::*;
 use crate::framework;
+use crate::Settings;
 use cgmath::{Rotation3, Transform, Zero};
 
 #[derive(Clone, Copy)]
@@ -88,6 +89,8 @@ pub struct Cubes {
     nodes: froggy::Storage<Node>,
     cubes: Vec<Cube>,
     levels: froggy::Storage<Level>,
+    settings: Settings,
+    positions_was_updated: bool,
 }
 
 impl Cubes {
@@ -103,21 +106,26 @@ impl Cubes {
 }
 
 impl framework::App for Cubes {
-    fn init(sc_desc: &wgpu::SwapChainDescriptor, device: &mut wgpu::Device) -> Self {
+    fn init(
+        sc_desc: &wgpu::SwapChainDescriptor,
+        device: &mut wgpu::Device,
+        settings: Settings,
+    ) -> Self {
         use std::mem;
 
         // Cubes
         // feed Froggy
         let mut nodes = froggy::Storage::new();
-        let levels: froggy::Storage<_> = LEVELS.iter().cloned().collect();
+        let levels: froggy::Storage<_> =
+            LEVELS.iter().cloned().take(settings.levels_count).collect();
         // Note: we populated the storages, but the returned pointers are already dropped.
         // Thus, all will be lost if we lock for writing now, but locking for reading retains the
         // contents, and cube creation will add references to them, so they will stay alive.
-        let mut cubes = create_cubes(&mut nodes, &levels);
+        let mut cubes = create_cubes(&mut nodes, &levels, settings.scale);
         println!(
             "Initialized {} cubes on {} levels",
             cubes.len(),
-            LEVELS.len()
+            settings.levels_count
         );
 
         // Graphics
@@ -178,6 +186,8 @@ impl framework::App for Cubes {
             cubes,
             levels,
             renderer,
+            settings,
+            positions_was_updated: false,
         }
     }
 
@@ -201,6 +211,13 @@ impl framework::App for Cubes {
     }
 
     fn tick(&mut self, delta: f32) {
+        if !self.settings.should_move {
+            if !self.positions_was_updated {
+                self.positions_was_updated = true;
+            } else {
+                return;
+            }
+        }
         // animate local spaces
         for cube in self.cubes.iter_mut() {
             let speed = self.levels[&cube.level].speed;
