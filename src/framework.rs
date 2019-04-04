@@ -1,4 +1,5 @@
 use log::info;
+use std::collections::VecDeque;
 
 #[allow(dead_code)]
 pub enum ShaderStage {
@@ -78,9 +79,15 @@ pub fn run<E: App>(title: &str) {
     info!("Entering render loop...");
     let mut running = true;
     let mut moment = std::time::Instant::now();
+    let mut fps_data = VecDeque::new();
+
     while running {
         let duration = moment.elapsed();
         let delta = duration.as_secs() as f32 + (duration.subsec_nanos() as f32 * 1.0e-9);
+        if fps_data.len() > 1000 {
+            fps_data.pop_front();
+        }
+        fps_data.push_back(delta);
         moment = std::time::Instant::now();
         events_loop.poll_events(|event| match event {
             Event::WindowEvent {
@@ -118,4 +125,9 @@ pub fn run<E: App>(title: &str) {
         let frame = swap_chain.get_next_texture();
         example.render(&frame, &mut device);
     }
+
+    println!(
+        "Moving average fps: {}",
+        1.0 / (fps_data.iter().sum::<f32>() / fps_data.len() as f32)
+    );
 }
