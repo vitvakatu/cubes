@@ -102,7 +102,7 @@ impl Cubes {
     }
 }
 
-impl framework::Example for Cubes {
+impl framework::App for Cubes {
     fn init(sc_desc: &wgpu::SwapChainDescriptor, device: &mut wgpu::Device) -> Self {
         use std::mem;
 

@@ -29,7 +29,7 @@ pub fn load_glsl(name: &str, stage: ShaderStage) -> Vec<u8> {
     spv
 }
 
-pub trait Example {
+pub trait App {
     fn init(sc_desc: &wgpu::SwapChainDescriptor, device: &mut wgpu::Device) -> Self;
     fn resize(&mut self, sc_desc: &wgpu::SwapChainDescriptor, device: &mut wgpu::Device);
     fn update(&mut self, event: wgpu::winit::WindowEvent);
@@ -37,7 +37,7 @@ pub trait Example {
     fn render(&mut self, frame: &wgpu::SwapChainOutput, device: &mut wgpu::Device);
 }
 
-pub fn run<E: Example>(title: &str) {
+pub fn run<E: App>(title: &str) {
     use wgpu::winit::{
         ElementState, Event, EventsLoop, KeyboardInput, VirtualKeyCode, Window, WindowEvent,
     };
