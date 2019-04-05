@@ -14,8 +14,8 @@ pub struct Settings {
         parse(try_from_str = "parse_cubes_count")
     )]
     levels_count: usize,
-    #[structopt(short = "m", long = "move")]
-    should_move: bool,
+    #[structopt(short = "m", long = "dont-move")]
+    dont_move: bool,
     #[structopt(short = "s", long = "scale", default_value = "0.4")]
     scale: f32,
 }

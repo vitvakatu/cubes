@@ -211,7 +211,7 @@ impl framework::App for Cubes {
     }
 
     fn tick(&mut self, delta: f32) {
-        if !self.settings.should_move {
+        if self.settings.dont_move {
             if !self.positions_was_updated {
                 self.positions_was_updated = true;
             } else {
