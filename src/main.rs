@@ -18,6 +18,8 @@ pub struct Settings {
     dont_move: bool,
     #[structopt(short = "s", long = "scale", default_value = "0.4")]
     scale: f32,
+    #[structopt(long = "no-instancing")]
+    no_instancing: bool,
 }
 
 fn parse_cubes_count(input: &str) -> Result<usize, std::num::ParseIntError> {

@@ -71,24 +71,113 @@ pub struct Instance {
     _color: [f32; 4],
 }
 
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct NoInstancingUniform {
+    _projection: [f32; 16],
+    _offset_scale: [f32; 4],
+    _rotation: [f32; 4],
+    _color: [f32; 4],
+    // Padding for 256-bytes alignment
+    _pad: [u8; 144],
+}
+
+impl NoInstancingUniform {
+    pub fn new(space: Space, color: [f32; 4], projection_mx: [f32; 16]) -> Self {
+        Self {
+            _projection: projection_mx,
+            _offset_scale: space.disp.extend(space.scale).into(),
+            _rotation: space.rot.v.extend(space.rot.s).into(),
+            _color: color,
+            _pad: [0; 144],
+        }
+    }
+}
+
+pub enum InstancingMode {
+    Instanced(InstancedMode),
+    NonInstanced(NonInstancedMode),
+}
+
+pub struct InstancedMode {
+    pub instances: Vec<Instance>,
+    pub instance_buf: wgpu::Buffer,
+    pub bind_group: wgpu::BindGroup,
+    pub bind_group_layout: wgpu::BindGroupLayout,
+    pub uniform_buf: wgpu::Buffer,
+}
+
+pub struct NonInstancedMode {
+    pub uniforms_buf: wgpu::Buffer,
+    pub uniforms: Vec<NoInstancingUniform>,
+    pub bind_groups: Vec<wgpu::BindGroup>,
+    pub bind_group_layout: wgpu::BindGroupLayout,
+}
+
+impl InstancingMode {
+    fn instanced(device: &mut wgpu::Device, aspect_ratio: f32, instances: Vec<Instance>) -> Self {
+        let instance_buf = Cubes::create_instance_buffer(device, &instances);
+        let uniform_buf = Cubes::create_globals_uniform(aspect_ratio, device);
+        let bind_group_layout = Cubes::create_bind_group_layout(device);
+        let bind_group = Cubes::create_bind_group(device, &bind_group_layout, &uniform_buf);
+        InstancingMode::Instanced(InstancedMode {
+            instance_buf,
+            instances,
+            bind_group,
+            uniform_buf,
+            bind_group_layout,
+        })
+    }
+
+    fn non_instanced(device: &mut wgpu::Device, aspect_ratio: f32, world: &mut World) -> Self {
+        let uniforms = Cubes::create_non_instancing_uniform_data(aspect_ratio, world);
+        let uniforms_buf = Cubes::create_non_instanced_uniform_buffer(device, &uniforms);
+        let bind_group_layout = Cubes::create_bind_group_layout(device);
+        let bind_groups = Cubes::create_bind_groups_no_instancing(
+            device,
+            &bind_group_layout,
+            &uniforms_buf,
+            uniforms.len() as u32,
+        );
+        InstancingMode::NonInstanced(NonInstancedMode {
+            uniforms_buf,
+            uniforms,
+            bind_groups,
+            bind_group_layout,
+        })
+    }
+
+    pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        match *self {
+            InstancingMode::Instanced(InstancedMode { ref bind_group_layout, .. }) => {
+                bind_group_layout
+            },
+            InstancingMode::NonInstanced(NonInstancedMode { ref bind_group_layout, .. }) => {
+                bind_group_layout
+            },
+        }
+    }
+}
+
 pub struct Renderer {
     vertex_buf: wgpu::Buffer,
     index_buf: wgpu::Buffer,
-    instance_buf: wgpu::Buffer,
+    instancing_mode: InstancingMode,
     depth_view: wgpu::TextureView,
-    instances: Vec<Instance>,
     index_count: usize,
-    bind_group: wgpu::BindGroup,
-    uniform_buf: wgpu::Buffer,
     pipeline: wgpu::RenderPipeline,
     aspect_ratio: f32,
 }
 
+pub struct World {
+    pub nodes: froggy::Storage<Node>,
+    pub cubes: Vec<Cube>,
+    pub levels: froggy::Storage<Level>,
+}
+
 pub struct Cubes {
     renderer: Renderer,
-    nodes: froggy::Storage<Node>,
-    cubes: Vec<Cube>,
-    levels: froggy::Storage<Level>,
+    world: World,
     settings: Settings,
     positions_was_updated: bool,
 }
@@ -121,16 +210,23 @@ impl framework::App for Cubes {
         // Note: we populated the storages, but the returned pointers are already dropped.
         // Thus, all will be lost if we lock for writing now, but locking for reading retains the
         // contents, and cube creation will add references to them, so they will stay alive.
-        let mut cubes = create_cubes(&mut nodes, &levels, settings.scale);
+        let cubes = create_cubes(&mut nodes, &levels, settings.scale);
         println!(
             "Initialized {} cubes on {} levels",
             cubes.len(),
             settings.levels_count
         );
 
+        let mut world = World {
+            nodes,
+            cubes,
+            levels,
+        };
+
         // Graphics
         let init_encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
+        let aspect_ratio = sc_desc.width as f32 / sc_desc.height as f32;
 
         // Create the vertex and index buffers
         let vertex_size = mem::size_of::<Vertex>();
@@ -142,16 +238,15 @@ impl framework::App for Cubes {
         // Create instance buffer
         let instance_size = mem::size_of::<Instance>();
         let mut instances = Vec::new();
-        Cubes::update_instances(&mut nodes, &mut cubes, &levels, &mut instances);
-        let instance_buf = Cubes::create_instance_buffer(device, &instances);
+        let instancing_mode = if settings.no_instancing {
+            InstancingMode::non_instanced(device, aspect_ratio, &mut world)
+        } else {
+            world.update_instances(&mut instances);
+            InstancingMode::instanced(device, aspect_ratio, instances)
+        };
 
         // Create pipeline layout
-        let (bind_group_layout, pipeline_layout) = Cubes::create_pipeline_layout(device);
-
-        let (aspect_ratio, uniform_buf) = Cubes::create_globals_uniform(sc_desc, device);
-
-        // Create bind group
-        let bind_group = Cubes::create_bind_group(device, &bind_group_layout, &uniform_buf);
+        let pipeline_layout = Cubes::create_pipeline_layout(device, instancing_mode.bind_group_layout());
 
         // Create the render pipeline
         let pipeline = Cubes::create_render_pipeline(
@@ -160,6 +255,7 @@ impl framework::App for Cubes {
             vertex_size,
             instance_size,
             &pipeline_layout,
+            settings.no_instancing,
         );
 
         let depth_texture = Cubes::create_depth_texture(&sc_desc, device);
@@ -171,22 +267,17 @@ impl framework::App for Cubes {
         let renderer = Renderer {
             vertex_buf,
             index_buf,
-            instance_buf,
+            instancing_mode,
             depth_view: depth_texture.create_default_view(),
-            instances,
             index_count: index_data.len(),
-            bind_group,
-            uniform_buf,
             pipeline,
             aspect_ratio,
         };
 
         Cubes {
-            nodes,
-            cubes,
-            levels,
             renderer,
             settings,
+            world,
             positions_was_updated: false,
         }
     }
@@ -204,10 +295,17 @@ impl framework::App for Cubes {
             .create_buffer_mapped(16, wgpu::BufferUsageFlags::TRANSFER_SRC)
             .fill_from_slice(mx_ref);
 
-        let mut encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
-        encoder.copy_buffer_to_buffer(&temp_buf, 0, &self.renderer.uniform_buf, 0, 64);
-        device.get_queue().submit(&[encoder.finish()]);
+        match self.renderer.instancing_mode {
+            InstancingMode::Instanced(InstancedMode {
+                ref uniform_buf, ..
+            }) => {
+                let mut encoder =
+                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
+                encoder.copy_buffer_to_buffer(&temp_buf, 0, &uniform_buf, 0, 64);
+                device.get_queue().submit(&[encoder.finish()]);
+            }
+            _ => {}
+        }
     }
 
     fn tick(&mut self, delta: f32) {
@@ -219,10 +317,10 @@ impl framework::App for Cubes {
             }
         }
         // animate local spaces
-        for cube in self.cubes.iter_mut() {
-            let speed = self.levels[&cube.level].speed;
+        for cube in self.world.cubes.iter_mut() {
+            let speed = self.world.levels[&cube.level].speed;
             let angle = cgmath::Rad(delta * speed);
-            self.nodes[&cube.node].local.concat_self(&Space {
+            self.world.nodes[&cube.node].local.concat_self(&Space {
                 disp: cgmath::Vector3::zero(),
                 rot: cgmath::Quaternion::from_angle_z(angle),
                 scale: 1.0,
@@ -231,7 +329,7 @@ impl framework::App for Cubes {
 
         // re-compute world spaces, using streaming iteration
         {
-            let mut cursor = self.nodes.cursor();
+            let mut cursor = self.world.nodes.cursor();
             while let Some((left, mut item, _)) = cursor.next() {
                 item.world = match item.parent {
                     Some(ref parent) => left.get(parent).unwrap().world.concat(&item.local),
@@ -241,31 +339,61 @@ impl framework::App for Cubes {
         }
 
         // Update instances
-        Self::update_instances(
-            &self.nodes,
-            &self.cubes,
-            &self.levels,
-            &mut self.renderer.instances,
-        );
+        if let InstancingMode::Instanced(InstancedMode {
+            ref mut instances, ..
+        }) = self.renderer.instancing_mode
+        {
+            self.world.update_instances(instances);
+        }
     }
 
     fn render(&mut self, frame: &wgpu::SwapChainOutput, device: &mut wgpu::Device) {
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
-        // load instances data
-        let temp_buf = device
-            .create_buffer_mapped(
-                self.renderer.instances.len(),
-                wgpu::BufferUsageFlags::TRANSFER_SRC,
-            )
-            .fill_from_slice(&self.renderer.instances);
-        encoder.copy_buffer_to_buffer(
-            &temp_buf,
-            0,
-            &self.renderer.instance_buf,
-            0,
-            (self.renderer.instances.len() * std::mem::size_of::<Instance>()) as u32,
-        );
+        match self.renderer.instancing_mode {
+            InstancingMode::Instanced(InstancedMode {
+                ref instances,
+                ref instance_buf,
+                ..
+            }) => {
+                let temp_buf = device
+                    .create_buffer_mapped(instances.len(), wgpu::BufferUsageFlags::TRANSFER_SRC)
+                    .fill_from_slice(&instances);
+                encoder.copy_buffer_to_buffer(
+                    &temp_buf,
+                    0,
+                    &instance_buf,
+                    0,
+                    (instances.len() * std::mem::size_of::<Instance>()) as u32,
+                );
+            }
+            InstancingMode::NonInstanced(NonInstancedMode {
+                ref uniforms_buf, ..
+            }) => {
+                let mut uniforms_data = Vec::new();
+                let mx = Self::view_proj_matrix(self.renderer.aspect_ratio);
+                let mx_ref: &[f32; 16] = mx.as_ref();
+                for cube in &self.world.cubes {
+                    let space = self.world.nodes[&cube.node].world;
+                    let color = self.world.levels[&cube.level].color;
+                    let uniform_data = NoInstancingUniform::new(space, color, mx_ref.clone());
+                    uniforms_data.push(uniform_data);
+                }
+                let temp_buf = device
+                    .create_buffer_mapped(
+                        uniforms_data.len(),
+                        wgpu::BufferUsageFlags::UNIFORM | wgpu::BufferUsageFlags::TRANSFER_SRC,
+                    )
+                    .fill_from_slice(&uniforms_data);
+                encoder.copy_buffer_to_buffer(
+                    &temp_buf,
+                    0,
+                    &uniforms_buf,
+                    0,
+                    (uniforms_data.len() * std::mem::size_of::<NoInstancingUniform>()) as u32,
+                );
+            }
+        }
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
@@ -290,17 +418,32 @@ impl framework::App for Cubes {
                 }),
             });
             rpass.set_pipeline(&self.renderer.pipeline);
-            rpass.set_bind_group(0, &self.renderer.bind_group);
             rpass.set_index_buffer(&self.renderer.index_buf, 0);
-            rpass.set_vertex_buffers(&[
-                (&self.renderer.vertex_buf, 0),
-                (&self.renderer.instance_buf, 0),
-            ]);
-            rpass.draw_indexed(
-                0..self.renderer.index_count as u32,
-                0,
-                0..self.renderer.instances.len() as u32,
-            );
+            match self.renderer.instancing_mode {
+                InstancingMode::Instanced(InstancedMode {
+                    ref bind_group,
+                    ref instances,
+                    ref instance_buf,
+                    ..
+                }) => {
+                    rpass.set_vertex_buffers(&[(&instance_buf, 0), (&self.renderer.vertex_buf, 0)]);
+                    rpass.set_bind_group(0, &bind_group);
+                    rpass.draw_indexed(
+                        0..self.renderer.index_count as u32,
+                        0,
+                        0..instances.len() as u32,
+                    );
+                }
+                InstancingMode::NonInstanced(NonInstancedMode {
+                    ref bind_groups, ..
+                }) => {
+                    rpass.set_vertex_buffers(&[(&self.renderer.vertex_buf, 0)]);
+                    for i in 0..self.world.cubes.iter().count() {
+                        rpass.set_bind_group(0, &bind_groups[i]);
+                        rpass.draw_indexed(0..self.renderer.index_count as u32, 0, 0..1);
+                    }
+                }
+            }
         }
 
         device.get_queue().submit(&[encoder.finish()]);
@@ -314,11 +457,61 @@ impl Cubes {
         vertex_size: usize,
         instance_size: usize,
         pipeline_layout: &wgpu::PipelineLayout,
+        no_instancing: bool,
     ) -> wgpu::RenderPipeline {
-        let vs_bytes = framework::load_glsl("cube.vert", framework::ShaderStage::Vertex);
+        let vert_shader = if no_instancing {
+            "cube_no_instancing.vert"
+        } else {
+            "cube.vert"
+        };
+        let vs_bytes = framework::load_glsl(vert_shader, framework::ShaderStage::Vertex);
         let fs_bytes = framework::load_glsl("cube.frag", framework::ShaderStage::Fragment);
         let vs_module = device.create_shader_module(&vs_bytes);
         let fs_module = device.create_shader_module(&fs_bytes);
+        let vertex_buffer_descriptor = wgpu::VertexBufferDescriptor {
+            stride: vertex_size as u32,
+            step_mode: wgpu::InputStepMode::Vertex,
+            attributes: &[
+                wgpu::VertexAttributeDescriptor {
+                    attribute_index: 0,
+                    format: wgpu::VertexFormat::Float4,
+                    offset: 0,
+                },
+                wgpu::VertexAttributeDescriptor {
+                    attribute_index: 1,
+                    format: wgpu::VertexFormat::Int4,
+                    offset: 4 * 4,
+                },
+            ],
+        };
+        let instance_buffer_descriptor = wgpu::VertexBufferDescriptor {
+            stride: instance_size as u32,
+            step_mode: wgpu::InputStepMode::Instance,
+            attributes: &[
+                wgpu::VertexAttributeDescriptor {
+                    attribute_index: 2,
+                    format: wgpu::VertexFormat::Float4,
+                    offset: 0,
+                },
+                wgpu::VertexAttributeDescriptor {
+                    attribute_index: 3,
+                    format: wgpu::VertexFormat::Float4,
+                    offset: 4 * 4,
+                },
+                wgpu::VertexAttributeDescriptor {
+                    attribute_index: 4,
+                    format: wgpu::VertexFormat::Float4,
+                    offset: 4 * 4 * 2,
+                },
+            ],
+        };
+        let instancing_buffers = &[vertex_buffer_descriptor, instance_buffer_descriptor];
+        let non_instancing_buffers = &instancing_buffers[0..1];
+        let vertex_buffers = if no_instancing {
+            non_instancing_buffers
+        } else {
+            instancing_buffers
+        };
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             layout: &pipeline_layout,
             vertex_stage: wgpu::PipelineStageDescriptor {
@@ -353,80 +546,37 @@ impl Cubes {
                 stencil_write_mask: 0,
             }),
             index_format: wgpu::IndexFormat::Uint16,
-            vertex_buffers: &[
-                wgpu::VertexBufferDescriptor {
-                    stride: vertex_size as u32,
-                    step_mode: wgpu::InputStepMode::Vertex,
-                    attributes: &[
-                        wgpu::VertexAttributeDescriptor {
-                            attribute_index: 0,
-                            format: wgpu::VertexFormat::Float4,
-                            offset: 0,
-                        },
-                        wgpu::VertexAttributeDescriptor {
-                            attribute_index: 1,
-                            format: wgpu::VertexFormat::Int4,
-                            offset: 4 * 4,
-                        },
-                    ],
-                },
-                wgpu::VertexBufferDescriptor {
-                    stride: instance_size as u32,
-                    step_mode: wgpu::InputStepMode::Instance,
-                    attributes: &[
-                        wgpu::VertexAttributeDescriptor {
-                            attribute_index: 2,
-                            format: wgpu::VertexFormat::Float4,
-                            offset: 0,
-                        },
-                        wgpu::VertexAttributeDescriptor {
-                            attribute_index: 3,
-                            format: wgpu::VertexFormat::Float4,
-                            offset: 4 * 4,
-                        },
-                        wgpu::VertexAttributeDescriptor {
-                            attribute_index: 4,
-                            format: wgpu::VertexFormat::Float4,
-                            offset: 4 * 4 * 2,
-                        },
-                    ],
-                },
-            ],
+            vertex_buffers,
             sample_count: 1,
         });
         pipeline
     }
 
-    fn create_pipeline_layout(
-        device: &mut wgpu::Device,
-    ) -> (wgpu::BindGroupLayout, wgpu::PipelineLayout) {
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+    fn create_pipeline_layout(device: &mut wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout) -> wgpu::PipelineLayout {
+        device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            bind_group_layouts: &[bind_group_layout],
+        })
+    }
+
+    fn create_bind_group_layout(device: &mut wgpu::Device) -> wgpu::BindGroupLayout {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             bindings: &[wgpu::BindGroupLayoutBinding {
                 binding: 0,
                 visibility: wgpu::ShaderStageFlags::VERTEX,
                 ty: wgpu::BindingType::UniformBuffer,
             }],
-        });
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            bind_group_layouts: &[&bind_group_layout],
-        });
-        (bind_group_layout, pipeline_layout)
+        })
     }
 
-    fn create_globals_uniform(
-        sc_desc: &wgpu::SwapChainDescriptor,
-        device: &mut wgpu::Device,
-    ) -> (f32, wgpu::Buffer) {
-        let aspect_ratio = sc_desc.width as f32 / sc_desc.height as f32;
+    fn create_globals_uniform(aspect_ratio: f32, device: &mut wgpu::Device) -> wgpu::Buffer {
         let mx_total = Self::view_proj_matrix(aspect_ratio);
         let mx_ref: &[f32; 16] = mx_total.as_ref();
-        let uniform_buf = device
+        device
             .create_buffer_mapped(
                 16,
                 wgpu::BufferUsageFlags::UNIFORM | wgpu::BufferUsageFlags::TRANSFER_DST,
             )
-            .fill_from_slice(mx_ref);
-        (aspect_ratio, uniform_buf)
+            .fill_from_slice(mx_ref)
     }
 
     fn create_bind_group(
@@ -446,22 +596,28 @@ impl Cubes {
         })
     }
 
-    fn update_instances(
-        nodes: &froggy::Storage<Node>,
-        cubes: &[Cube],
-        levels: &froggy::Storage<Level>,
-        instances: &mut Vec<Instance>,
-    ) {
-        instances.clear();
-        for cube in cubes {
-            let space = nodes[&cube.node].world;
-            let color = levels[&cube.level].color;
-            instances.push(Instance {
-                _offset_scale: space.disp.extend(space.scale).into(),
-                _rotation: space.rot.v.extend(space.rot.s).into(),
-                _color: color,
+    fn create_bind_groups_no_instancing(
+        device: &mut wgpu::Device,
+        bind_group_layout: &wgpu::BindGroupLayout,
+        uniform_buf: &wgpu::Buffer,
+        count: u32,
+    ) -> Vec<wgpu::BindGroup> {
+        let size = std::mem::size_of::<NoInstancingUniform>();
+        let mut bind_groups = Vec::new();
+        for i in 0..count {
+            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &bind_group_layout,
+                bindings: &[wgpu::Binding {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer {
+                        buffer: &uniform_buf,
+                        range: (i * size as u32)..(i + 1) * size as u32,
+                    },
+                }],
             });
+            bind_groups.push(bind_group);
         }
+        bind_groups
     }
 
     fn create_depth_texture(
@@ -500,5 +656,58 @@ impl Cubes {
                 wgpu::BufferUsageFlags::VERTEX | wgpu::BufferUsageFlags::TRANSFER_DST,
             )
             .fill_from_slice(&instances)
+    }
+
+    fn create_non_instanced_uniform_buffer(
+        device: &mut wgpu::Device,
+        uniforms_data: &[NoInstancingUniform],
+    ) -> wgpu::Buffer {
+        let no_instancing_buf = device
+            .create_buffer_mapped(
+                uniforms_data.len(),
+                wgpu::BufferUsageFlags::UNIFORM | wgpu::BufferUsageFlags::TRANSFER_DST,
+            )
+            .fill_from_slice(&uniforms_data);
+        no_instancing_buf
+    }
+
+    fn update_non_instancing_uniform_data(
+        aspect_ratio: f32,
+        world: &mut World,
+        uniforms_data: &mut Vec<NoInstancingUniform>,
+    ) {
+        uniforms_data.clear();
+        let mx = Self::view_proj_matrix(aspect_ratio);
+        let mx_ref: &[f32; 16] = mx.as_ref();
+        for cube in &world.cubes {
+            let space = world.nodes[&cube.node].world;
+            let color = world.levels[&cube.level].color;
+            let uniform_data = NoInstancingUniform::new(space, color, mx_ref.clone());
+            uniforms_data.push(uniform_data);
+        }
+    }
+
+    fn create_non_instancing_uniform_data(
+        aspect_ratio: f32,
+        world: &mut World,
+    ) -> Vec<NoInstancingUniform> {
+        let mut uniforms_data = Vec::new();
+        Self::update_non_instancing_uniform_data(aspect_ratio, world, &mut uniforms_data);
+        uniforms_data
+    }
+}
+
+impl World {
+    pub fn update_instances(&self, instances: &mut Vec<Instance>) {
+        instances.clear();
+        for cube in self.cubes.iter() {
+            let space = self.nodes[&cube.node].world;
+            let color = self.levels[&cube.level].color;
+            instances.push(Instance {
+                _offset_scale: space.disp.extend(space.scale).into(),
+                _rotation: space.rot.v.extend(space.rot.s).into(),
+                _color: color,
+            });
+        }
     }
 }
